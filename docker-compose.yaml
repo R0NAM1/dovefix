@@ -1,0 +1,35 @@
+version: '3.7'
+services:
+
+    dovefix:
+      image: r0nam1/dovefix:latest
+      container_name: dovefix
+      environment:
+        - TZ=America/Los_Angles
+      volumes:
+        # Where to store the acutal mail files
+        - ./dovefix/mail:/mailDir
+        # To make sure DNS, hostname and all that are what we want.
+        - ./dovefix/hosts:/etc/hosts
+        - ./dovefix/hostname:/etc/hostname
+        - ./dovefix/resolv.conf:/etc/resolv.conf
+        # Dovecot editable configs.
+        - ./dovefix/dovecot-etc:/etc/dovecot
+        # Dovecot log files, does not empty itself!
+        - ./dovefix/dovecot.log:/var/log/dovecot/dovecot.log
+        # Postfix log files, does not emoty itself!
+        - ./dovefix/postfix.log:/var/log/postfix.log
+        # Postfix editable configs.
+        - ./dovefix/postfix-etc:/etc/postfix
+	# DKIM keys for security.
+        - ./dovefix/dkim-keys:/dkim-keys
+      restart: unless-stopped
+      ports:
+        # SMTP Incoming For Other Mail Servers
+        - "25:25"
+        # IMAP non SSL 
+        - "143:143"
+        # SMTP non SSL
+        - "587:587"
+        # SMTP TLS
+        - "465:465"

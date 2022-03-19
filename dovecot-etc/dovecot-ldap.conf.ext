@@ -1,0 +1,40 @@
+#True Custom
+
+#LDAP Host
+
+hosts = freeipa.internal.my.domain
+
+#DN Bind Account
+
+dn = uid=_dovecotauth,cn=users,cn=accounts,dc=internal,dc=my,dc=domain
+
+dnpass = thisisapassword!
+
+#Allow StarTLS
+
+tls = yes
+
+#Allow LDAP account binding
+
+auth_bind = yes
+
+#Below is the BIND template, what DN to use, and what to put where.
+
+auth_bind_userdn = uid=%u,cn=users,cn=accounts,dc=internal,dc=my,dc=domain
+
+# Set LDAP version to use.
+
+ldap_version = 3
+
+# Where to search, trimmed version of auth_bind_userdn
+base = cn=users,cn=accounts,dc=internal,dc=my,dc=domain
+scope = subtree
+
+# Set user attributes
+user_attrs = homeDirectory=home,uidNumber=uid,gidNumber=gid
+
+user_filter = (&(objectClass=posixAccount)(uid=%u))
+
+pass_attrs = uid=user,userPassword=password
+
+pass_filter = (&(objectClass=posixAccount)(uid=%u))

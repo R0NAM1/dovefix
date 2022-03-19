@@ -1,0 +1,315 @@
+# R0NAM1's FAT FREE POSTFIX CONFIG! (HALF OFF!!!)
+# https://www.postfix.org/postconf.5.html
+# https://www.vennedey.net/resources/2-LDAP-managed-mail-server-with-Postfix-and-Dovecot-for-multiple-domains#the_hostname
+
+# The banner shown at login, test it with telnet!
+smtpd_banner = Welcome to the internet. \ $mail_name, $myhostname
+
+# Meant for upgrades, oldest version this config is compatable with.
+compatibility_level = 3.6
+
+# The actual hostname of the system, being in a docker container, this is meant for the server just knowing it is SUPPOST to be that.
+myhostname=smtp.internal.my.domain
+
+# Which networks am I allowed to communicate with?
+mynetworks=127.0.0.0/8, 192.168.0.0/24, 172.28.0.0/24
+
+# VERY Useful for debugging, tells you everything it possibly could.
+#debug_peer_level = 10
+#debug_peer_list=192.168.0.3
+
+# The domain we are servicing.
+mydomain=my.domain
+
+# If under nat (I am!) tell Postfix the public IP address or FQDN that it will be using:
+proxy_interfaces = my.domain
+
+# Mail log
+maillog_file=/var/log/postfix.log
+
+# Set mail storage scheme
+home_mailbox = Maildir/
+
+# If mail is not to be delivered locally, forward it to here, like a proxy. Needed incase you have no reputation:
+relayhost = 
+
+# Settings For Above (Only do if you need smtp auth on your relay)
+
+#smtp_sasl_auth_enable = yes
+#smtp_sasl_security_options =
+#smtp_sasl_password_maps = lmdb:/etc/postfix/gmail-sasl_passwd
+
+# Right now it does not reject any local mail
+local_recipient_maps = $alias_maps
+  unix:passwd.byname $virtual_mailbox_maps
+
+# Can be native (nsswitch.conf, or equivalent mechanism), or reach out to DNS, or both.
+smtp_host_lookup = dns
+
+#  The SMTP server validates recipient addresses with $virtual_mailbox_maps and rejects mail for non-existent recipients. Should always be $mydomain
+virtual_mailbox_domains = $mydomain
+
+#
+virtual_alias_domains = ldap:/etc/postfix/ldap/virtual_alias_domains
+
+# Where the mail files and account boxes are stored.
+virtual_mailbox_base = /
+
+# Name of a way to transport mail defined in master.cf
+
+# Usually is not within your database, should be handled by dovecot or another lmtp provider.
+#virtual_transport = ldap:/etc/postfix/ldap/
+
+# For this instance anytime we deliver mail locally we use dovecot lmtp.
+virtual_transport = lmtp:unix:private/dovecot-lmtp
+mailbox_transport = lmtp:unix:private/dovecot-lmtp
+
+# Optional lookup; Lookup tables with all valid addresses in the domains that match $virtual_mailbox_domains. So in this case my.domain.
+virtual_mailbox_maps = ldap:/etc/postfix/ldap/virtual_mailbox_maps
+
+# The min UID accepted, 100 for now.
+virtual_minimum_uid = 100
+
+# Lookup tables with the per-recipient user ID that the virtual(8) delivery agent uses while writing to the recipient's mailbox. 'type:name', AKA
+#FIGURE OUT 
+#virtual_uid_maps = ldap:/etc/postfix/ldap/virtual_uid_maps
+#virtual_gid_maps = ldap:/etc/postfix/ldap/virtual_uid_maps
+virtual_uid_maps = static:101
+virtual_gid_maps = static:102
+
+
+# Login username allowed to use this sender address 
+smtpd_sender_login_maps = ldap:/etc/postfix/ldap/smtpd_sender_login_maps
+#A way to alias domains, not needed here.
+virtual_alias_maps = ldap:/etc/postfix/ldap/virtual_alias_maps
+
+# Where does outgoing mail appear from? My domain of course! My.Domain!
+myorigin = $mydomain
+
+# Looks up all recipients in /etc/passwd and /etc/aliases.
+# The SMTP server validates recipient addresses with $local_recipient_maps and rejects non-existent recipients.
+# First go to me, then me, then me!
+mydestination = localhost.$mydomain, localhost
+
+# SOFT BOUNCE
+#
+# The soft_bounce parameter provides a limited safety net for
+# testing.  When soft_bounce is enabled, mail will remain queued that
+# would otherwise bounce. This parameter disables locally-generated
+# bounces, and prevents the SMTP server from rejecting mail permanently
+# (by changing 5xx replies into 4xx replies). However, soft_bounce
+# is no cure for address rewriting mistakes or mail routing mistakes.
+#
+#soft_bounce = no
+
+# LOCAL PATHNAME INFORMATION
+#
+# The queue_directory specifies the location of the Postfix queue.
+# This is also the root directory of Postfix daemons that run chrooted.
+# See the files in examples/chroot-setup for setting up Postfix chroot
+# environments on different UNIX systems.
+#
+queue_directory = /var/spool/postfix
+
+# The command_directory parameter specifies the location of all
+# postXXX commands.
+#
+command_directory = /usr/sbin
+
+# The daemon_directory parameter specifies the location of all Postfix
+# daemon programs (i.e. programs listed in the master.cf file). This
+# directory must be owned by root.
+#
+daemon_directory = /usr/libexec/postfix
+
+# The data_directory parameter specifies the location of Postfix-writable
+# data files (caches, random numbers). This directory must be owned
+# by the mail_owner account (see below).
+#
+data_directory = /var/lib/postfix
+
+# QUEUE AND PROCESS OWNERSHIP
+#
+# The mail_owner parameter specifies the owner of the Postfix queue
+# and of most Postfix daemon processes.  Specify the name of a user
+# account THAT DOES NOT SHARE ITS USER OR GROUP ID WITH OTHER ACCOUNTS
+# AND THAT OWNS NO OTHER FILES OR PROCESSES ON THE SYSTEM.  In
+# particular, don't specify nobody or daemon. PLEASE USE A DEDICATED
+# USER.
+#
+mail_owner = postfix
+
+# The unknown_local_recipient_reject_code specifies the SMTP server
+# response code when a recipient domain matches $mydestination or
+# ${proxy,inet}_interfaces, while $local_recipient_maps is non-empty
+# and the recipient address or address local-part is not found.
+#
+# The default setting is 550 (reject mail) but it is safer to start
+# with 450 (try again later) until you are certain that your
+# local_recipient_maps settings are OK.
+#
+unknown_local_recipient_reject_code = 550
+
+# DEBUGGING CONTROL
+#
+# The debug_peer_level parameter specifies the increment in verbose
+# logging level when an SMTP client or server host name or address
+# matches a pattern in the debug_peer_list parameter.
+#
+
+# The debug_peer_list parameter specifies an optional list of domain
+# or network patterns, /file/name patterns or type:name tables. When
+# an SMTP client or server host name or address matches a pattern,
+# increase the verbose logging level by the amount specified in the
+# debug_peer_level parameter.
+#
+#debug_peer_list = 127.0.0.1
+#debug_peer_list = some.domain
+
+# The debugger_command specifies the external command that is executed
+# when a Postfix daemon program is run with the -D option.
+#
+# Use "command .. & sleep 5" so that the debugger can attach before
+# the process marches on. If you use an X-based debugger, be sure to
+# set up your XAUTHORITY environment variable before starting Postfix.
+#
+debugger_command =
+	 PATH=/bin:/usr/bin:/usr/local/bin:/usr/X11R6/bin
+	 ddd $daemon_directory/$process_name $process_id & sleep 5
+
+# If you can't use X, use this to capture the call stack when a
+# daemon crashes. The result is in a file in the configuration
+# directory, and is named after the process name and the process ID.
+#
+# debugger_command =
+#	PATH=/bin:/usr/bin:/usr/local/bin; export PATH; (echo cont;
+#	echo where) | gdb $daemon_directory/$process_name $process_id 2>&1
+#	>$config_directory/$process_name.$process_id.log & sleep 5
+#
+# Another possibility is to run gdb under a detached screen session.
+# To attach to the screen session, su root and run "screen -r
+# <id_string>" where <id_string> uniquely matches one of the detached
+# sessions (from "screen -list").
+#
+# debugger_command =
+#	PATH=/bin:/usr/bin:/sbin:/usr/sbin; export PATH; screen
+#	-dmS $process_name gdb $daemon_directory/$process_name
+#	$process_id & sleep 1
+
+# INSTALL-TIME CONFIGURATION INFORMATION
+#
+# The following parameters are used when installing a new Postfix version.
+# 
+# sendmail_path: The full pathname of the Postfix sendmail command.
+# This is the Sendmail-compatible mail posting interface.
+# 
+sendmail_path = /usr/sbin/sendmail
+
+# newaliases_path: The full pathname of the Postfix newaliases command.
+# This is the Sendmail-compatible command to build alias databases.
+#
+newaliases_path = /usr/bin/newaliases
+
+# mailq_path: The full pathname of the Postfix mailq command.  This
+# is the Sendmail-compatible mail queue listing command.
+# 
+mailq_path = /usr/bin/mailq
+
+# setgid_group: The group for mail submission and queue management
+# commands.  This must be a group name with a numerical group ID that
+# is not shared with other accounts, not even with the Postfix account.
+#
+setgid_group = postdrop
+
+# html_directory: The location of the Postfix HTML documentation.
+#
+html_directory = no
+
+# manpage_directory: The location of the Postfix on-line manual pages.
+#
+manpage_directory = /usr/share/man
+
+# sample_directory: The location of the Postfix sample configuration files.
+# This parameter is obsolete as of Postfix 2.1.
+#
+sample_directory = /etc/postfix
+
+# readme_directory: The location of the Postfix README files.
+#
+readme_directory = /usr/share/doc/postfix/readme
+inet_protocols = ipv4
+meta_directory = /etc/postfix
+shlib_directory = /usr/lib/postfix
+
+####CUSTOM 
+
+# Indicates use dovecot auth
+smtpd_sasl_type = dovecot
+
+# Specified location of authentication socket supplied by dovecot
+#wrt /var/spool/postfix
+smtpd_sasl_path = /var/spool/postfix/private/auth
+
+#Enable SASL authentication
+smtpd_sasl_auth_enable = yes
+
+#Also advertize "AUTH PLAIN=" along with "AUTH PLAIN " to support broken clients esp outlook
+broken_sasl_auth_clients = yes
+
+#Do not allow anonymous access for SASL.  Very important
+#If SSL or TLS is configured then perhaps noplaintext over
+#non-encryption channel can also be configured
+smtpd_sasl_security_options = noanonymous
+
+#smtpd_sasl_security_options = noanonymous, noplaintext
+
+#Do not allow anonymous access for SASL over TLS/SSL.  Here
+#plaintext auth should not be a problem
+smtpd_sasl_tls_security_options = noanonymous
+
+#Allow relay for anybody sending to mydomain and allow relay from trusted networks.
+#Further allow relay to any destination from anywhere for authenticated clients
+smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
+
+smtpd_recipient_restrictions = permit_mynetworks, reject_unauth_destination, reject_unknown_recipient_domain, reject_unverified_recipient 
+#, check_policy_service unix:private/policyd-spf
+
+#Append username of user who authentication in email headers
+smtpd_sasl_authenticated_header = yes
+
+smtpd_sasl_local_domain=my.domain
+
+#Set mail location
+mail_spool_directory = /home
+
+
+
+##STARTTLS
+
+smtpd_use_tls = yes
+smtpd_tls_cert_file = /Certs/wildcard.internal.my.domain/fullchain.pem
+smtpd_tls_key_file = /Certs/wildcard.internal.my.domain/privkey.pem
+smtpd_tls_security_level = encrypt
+# SMTP TLS configuration for outgoing connections
+smtp_use_tls = yes
+smtp_tls_cert_file = /Certs/wildcard.internal.my.domain/fullchain.pem
+smtp_tls_key_file = /Certs/wildcard.internal.my.domain/privkey.pem
+smtp_tls_security_level = encrypt
+
+# SPF Security
+#policyd-spf_time_limit = 3600
+
+
+# To receive mail from SPAM filter:
+milter_protocol = 6
+milter_mail_macros = i {mail_addr} {client_addr} {client_name} {auth_authen}
+milter_default_action = quarantine
+smtpd_milters = inet:172.28.0.27:11332
+non_smtpd_milters = inet:172.28.0.27:11332
+
+# For when mail bounces (Assume mail is undeliverable after 2 minutes, then redeliver)
+
+maximal_queue_lifetime = 15s
+delay_warning_time = 15s
+bounce_queue_lifetime = 15s
+bounce_template_file = /etc/postfix/bounce.cf

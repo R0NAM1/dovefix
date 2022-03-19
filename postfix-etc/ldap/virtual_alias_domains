@@ -1,0 +1,20 @@
+server_host = ldap://freeipa.internal.my.domain
+start_tls = yes
+version = 3
+#tls_ca_cert_file = /etc/ldap/tls/CA.pem
+#tls_require_cert = yes
+
+bind = yes
+bind_dn = uid=_postfixauth,cn=users,cn=accounts,dc=internal,dc=my,dc=domain
+bind_pw = IAMAPASSWORD!
+
+search_base = cn=users,cn=accounts,dc=internal,dc=my,dc=domain
+scope = sub
+
+##CUSTOM
+
+query_filter = uid=*@%s
+result_attribute = uid
+result_format = %d
+
+#debuglevel = 1
