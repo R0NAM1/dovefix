@@ -7,23 +7,27 @@ services:
       environment:
         - TZ=America/Los_Angles
       volumes:
+        # Certificate locations
+        - ./certificates:/certificates
         # Where to store the acutal mail files
-        - ./dovefix/mail:/mailDir
+        - ./mail:/mailDir
         # To make sure DNS, hostname and all that are what we want.
-        - ./dovefix/hosts:/etc/hosts
-        - ./dovefix/hostname:/etc/hostname
-        - ./dovefix/resolv.conf:/etc/resolv.conf
+        - /etc/hosts:/etc/hosts
+        - /etc/hostname:/etc/hostname
+        - /etc/resolv.conf:/etc/resolv.conf
         # Dovecot editable configs.
-        - ./dovefix/dovecot-etc:/etc/dovecot
+        - ./dovecot-etc:/etc/dovecot
         # Dovecot log files, does not empty itself!
-        - ./dovefix/dovecot.log:/var/log/dovecot/dovecot.log
+        - ./dovecot.log:/var/log/dovecot/dovecot.log
         # Postfix log files, does not emoty itself!
-        - ./dovefix/postfix.log:/var/log/postfix.log
+        - ./postfix.log:/var/log/postfix.log
         # Postfix editable configs.
-        - ./dovefix/postfix-etc:/etc/postfix
-	# DKIM keys for security.
-        - ./dovefix/dkim-keys:/dkim-keys
-      restart: unless-stopped
+        - ./postfix-etc:/etc/postfix
+        # DKIM keys for security.
+        - ./dkim-keys:/dkim-keys
+      networks:
+        dovefix-network:
+          ipv4_address: 172.28.0.40
       ports:
         # SMTP Incoming For Other Mail Servers
         - "25:25"
@@ -33,3 +37,39 @@ services:
         - "587:587"
         # SMTP TLS
         - "465:465"
+      restart: unless-stopped
+
+    # SPAM Filter Milter, using rspamd
+    # rSpamd also deals with dkimKeys instead of dovefix
+    rspamd:
+      image: a16bitsysop/rspamd:3.1-r4-alpine3.15.0-r0
+      container_name: rspamd
+      environment:
+        - TIMEZONE=America/Los_Angles
+        - REDIS=redis
+      networks:
+          dovefix-network:
+            ipv4_address: 172.28.0.20
+      volumes:
+        - ./rspamd/var:/var/lib/rspamd
+        - ./rspamd/override.d:/etc/rspamd/override.d
+        - ./rspamd/dkimKeys:/dkimKeys
+      restart: unless-stopped
+      ports:
+        # Web interface
+        - "11334:11334"
+
+    # Redis for rSpamd
+    redis:
+      image: redis:6.0
+      container_name: redis
+      networks:
+        dovefix-network:
+          ipv4_address: 172.28.0.30
+      restart: unless-stopped
+
+# Contain all this into single network
+networks:
+  dovefix-network:
+    external: true
+    name: dovefix-network
