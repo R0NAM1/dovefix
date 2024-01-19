@@ -1,95 +1,157 @@
 # R0NAM1's FAT FREE POSTFIX CONFIG! (HALF OFF!!!)
+# For editing in VSCodium set file type to Shell Script, makes it colorful
 # https://www.postfix.org/postconf.5.html
 # https://www.vennedey.net/resources/2-LDAP-managed-mail-server-with-Postfix-and-Dovecot-for-multiple-domains#the_hostname
 
 # The banner shown at login, test it with telnet!
-smtpd_banner = Welcome to the internet. \ $mail_name, $myhostname
+smtpd_banner = Welcome to the internet, take a look around... \ $mail_name $mail_version running at $myhostname
 
 # Meant for upgrades, oldest version this config is compatable with.
 compatibility_level = 3.6
 
-# The actual hostname of the system, being in a docker container, this is meant for the server just knowing it is SUPPOST to be that.
+# The actual hostname of the system, being in a docker container, this is the hostname of the bare metal box.
 myhostname=smtp.internal.my.domain
 
-# Which networks am I allowed to communicate with?
+# Which networks am I allowed to communicate with? Probably shouldn't just be 0.0.0.0/0, especially if a mail storage server
 mynetworks=127.0.0.0/8, 192.168.0.0/24, 172.28.0.0/24
 
-# VERY Useful for debugging, tells you everything it possibly could.
+# VERY Useful for debugging, tells you everything it possibly could regarding a certain peer
+# Use with either client that cannot authenticate or private relay not forwarding correctly
 #debug_peer_level = 10
 #debug_peer_list=192.168.0.3
 
-# The domain we are servicing.
+# The domain we are servicing.(Dovefix container was made in mind that each docker container services a single email domain)
 mydomain=my.domain
 
-# If under nat (I am!) tell Postfix the public IP address or FQDN that it will be using:
-proxy_interfaces = my.domain
+# Network domain that emails come in from, needed so email loops don't happen with down hosts, but does not seem to be relevent with a
+# private relay, so set to $mydomain unless other is needed
+proxy_interfaces = $mydomain
 
-# Mail log
+# Postfix log file, does not truncate so turn off debugging when not needed.
 maillog_file=/var/log/postfix.log
 
-# Set mail storage scheme
-home_mailbox = Maildir/
+# Set mail storage scheme, only used for local unix mail, NOT for virtual users which is what we use
+# home_mailbox = Maildir/
 
-# If mail is not to be delivered locally, forward it to here, like a proxy. Needed incase you have no reputation:
-relayhost = 
+# If mail is not to be delivered locally, forward it to here, like a proxy. Commercial services include SMTP2GO, but can also be selfhosted:
+# IDEAL LAYOUT is each seperate domain is a dovefix container, all linked to a private cloud relay (Postfix on VPS that can use port 25)
+# Then private relay forwards smtp to SMTP service with high reputation, like SMTP2GO or Mailgun
+# Hopefully someday a community driven mail reputation service will exist that is used instead of what Gmail or Outlook does.
+relayhost = private-relay.my.domain
 
-# Settings For Above (Only do if you need smtp auth on your relay)
+# Settings For Above (Only do if you need smtp auth on your relay, WHICH YOU SHOULD)
+# smtp is this host reaching out to other hosts smtp
+# smtpd is other hosts reaching out to me
 
 #smtp_sasl_auth_enable = yes
-#smtp_sasl_security_options =
-#smtp_sasl_password_maps = lmdb:/etc/postfix/gmail-sasl_passwd
 
-# Right now it does not reject any local mail
-local_recipient_maps = $alias_maps
-  unix:passwd.byname $virtual_mailbox_maps
+# Should probably use noplaintext, but if over tls or ssl then it is encrypted!
+#smtp_sasl_security_options =
+
+# Password map for above relay host or multiple, modern postfix replaces hash with lmdb
+#smtp_sasl_password_maps = lmdb:/etc/postfix/smtp_sasl_password_maps
+
+## EXAMPLE OF smtp_sasl_password_maps FILE
+#[private-relay.my.domain]:25    username:password
+
+
+# Do not reject local mail
+# For local unix users, use default $alias_maps (Maps to /etc/aliases), unix auth, and virtual_mailbox_maps
+# Should NOT affect virtual users though!
+local_recipient_maps = $alias_maps unix:passwd.byname $virtual_mailbox_maps
 
 # Can be native (nsswitch.conf, or equivalent mechanism), or reach out to DNS, or both.
+# No real reason to not have it reach out to DNS
 smtp_host_lookup = dns
 
-#  The SMTP server validates recipient addresses with $virtual_mailbox_maps and rejects mail for non-existent recipients. Should always be $mydomain
+# virtual_mailbox_maps tell postfix how to store mail, should probably 
+# Returns 'user/storageDirectory' from %s 'user@my.domain'
+virtual_mailbox_maps = mysql:/etc/postfix/virtual_mailbox_maps.mysql
+
+## EXAMPLE FILE
+# user = mySqlUser
+# password = mySqlPassword
+# hosts = 172.28.0.90
+# dbname = mySqlDb
+
+# Query to get info, should probably just return username since is already stored in my.domain/username
+# query = SELECT email FROM virtual_users WHERE email='%s'
+## EOF
+
+
+#  The SMTP server validates recipient addresses with $virtual_mailbox_maps and rejects mail for non-existent recipients.
+# Should always be $mydomain since we are just servicing one, no need to store multiple in a database
 virtual_mailbox_domains = $mydomain
 
-#
-virtual_alias_domains = ldap:/etc/postfix/ldap/virtual_alias_domains
+# Simple way for this server to translate other.domain to my.domain, not really needed in normal operation
+# Returns 'user@my.domain' from %s 'user@other.domain'
+virtual_alias_domains = mysql:/etc/postfix/virtual_alias_domains.mysql
 
-# Where the mail files and account boxes are stored.
+## EXAMPLE FILE
+# user = mySqlUser
+# password = mySqlPassword
+# hosts = 172.28.0.90
+# dbname = mySqlDb
+
+# Query to get info
+# query = SELECT destination FROM virtual_aliases WHERE source='%s'
+## EOF
+
+# Prepending the virtual_mailbox_maps result, should keep as / by default (Despite Wiki saying its a bad idea, seems to do nothing in this case)
 virtual_mailbox_base = /
 
-# Name of a way to transport mail defined in master.cf
 
-# Usually is not within your database, should be handled by dovecot or another lmtp provider.
-#virtual_transport = ldap:/etc/postfix/ldap/
-
-# For this instance anytime we deliver mail locally we use dovecot lmtp.
+# For this instance anytime we deliver mail locally we use dovecot lmtp through its unix socket
+# virtual_transport is next hop for $virtual_mailbox_domains, AKA $mydomain,
+# mailbox_transport seems to override unix mail and send all unix mail to lmtp?
 virtual_transport = lmtp:unix:private/dovecot-lmtp
 mailbox_transport = lmtp:unix:private/dovecot-lmtp
-
-# Optional lookup; Lookup tables with all valid addresses in the domains that match $virtual_mailbox_domains. So in this case my.domain.
-virtual_mailbox_maps = ldap:/etc/postfix/ldap/virtual_mailbox_maps
 
 # The min UID accepted, 100 for now.
 virtual_minimum_uid = 100
 
-# Lookup tables with the per-recipient user ID that the virtual(8) delivery agent uses while writing to the recipient's mailbox. 'type:name', AKA
-#FIGURE OUT 
-#virtual_uid_maps = ldap:/etc/postfix/ldap/virtual_uid_maps
-#virtual_gid_maps = ldap:/etc/postfix/ldap/virtual_uid_maps
+# From how it's explained, this can either map username to uid and gid, OR force a single user to write to virtual mailboxes
 virtual_uid_maps = static:101
 virtual_gid_maps = static:102
 
-
 # Login username allowed to use this sender address 
-smtpd_sender_login_maps = ldap:/etc/postfix/ldap/smtpd_sender_login_maps
-#A way to alias domains, not needed here.
-virtual_alias_maps = ldap:/etc/postfix/ldap/virtual_alias_maps
+# Returns login username "user@domain" or "user" from %s variable "user@my.domain" 
+smtpd_sender_login_maps = ldap:/etc/postfix/ldap/smtpd_sender_login_maps.mysql
+
+## EXAMPLE FILE
+# user = mySqlUser
+# password = mySqlPassword
+# hosts = 172.28.0.90
+# dbname = mySqlDb
+
+# Query to get info, first email could also be username
+# query = SELECT email FROM virtual_users WHERE email='%s'
+## EOF
+
+# Return new destination email address "user@my.domain", from %s variable "user@my.domain"
+virtual_alias_maps = ldap:/etc/postfix/ldap/virtual_alias_maps.mysql
+
+## EXAMPLE FILE
+# user = mySqlUser
+# password = mySqlPassword
+# hosts = 172.28.0.90
+# dbname = mySqlDb
+
+# Query to get info, first email could also be username
+# query = SELECT destination FROM virtual_aliases WHERE source='%s'
+## EOF
 
 # Where does outgoing mail appear from? My domain of course! My.Domain!
+# Shouldn't need to change in this example
 myorigin = $mydomain
 
 # Looks up all recipients in /etc/passwd and /etc/aliases.
 # The SMTP server validates recipient addresses with $local_recipient_maps and rejects non-existent recipients.
 # First go to me, then me, then me!
+# AKA any local mail goes to me locally
 mydestination = localhost.$mydomain, localhost
+
+## RANDOM NEEDED THINGS
 
 # SOFT BOUNCE
 #
@@ -99,6 +161,8 @@ mydestination = localhost.$mydomain, localhost
 # bounces, and prevents the SMTP server from rejecting mail permanently
 # (by changing 5xx replies into 4xx replies). However, soft_bounce
 # is no cure for address rewriting mistakes or mail routing mistakes.
+#
+# Basically a debugging thing
 #
 #soft_bounce = no
 
@@ -149,22 +213,6 @@ mail_owner = postfix
 # local_recipient_maps settings are OK.
 #
 unknown_local_recipient_reject_code = 550
-
-# DEBUGGING CONTROL
-#
-# The debug_peer_level parameter specifies the increment in verbose
-# logging level when an SMTP client or server host name or address
-# matches a pattern in the debug_peer_list parameter.
-#
-
-# The debug_peer_list parameter specifies an optional list of domain
-# or network patterns, /file/name patterns or type:name tables. When
-# an SMTP client or server host name or address matches a pattern,
-# increase the verbose logging level by the amount specified in the
-# debug_peer_level parameter.
-#
-#debug_peer_list = 127.0.0.1
-#debug_peer_list = some.domain
 
 # The debugger_command specifies the external command that is executed
 # when a Postfix daemon program is run with the -D option.
@@ -241,7 +289,8 @@ inet_protocols = ipv4
 meta_directory = /etc/postfix
 shlib_directory = /usr/lib/postfix
 
-####CUSTOM 
+# END OF RANDOM NEEDED THINGS
+# START OF MORE CUSTOM CONFIG
 
 # Indicates use dovecot auth
 smtpd_sasl_type = dovecot
@@ -257,7 +306,7 @@ smtpd_sasl_auth_enable = yes
 broken_sasl_auth_clients = yes
 
 #Do not allow anonymous access for SASL.  Very important
-#If SSL or TLS is configured then perhaps noplaintext over
+#If SSL or TLS is configured then perhaps noplaintext is not needed
 #non-encryption channel can also be configured
 smtpd_sasl_security_options = noanonymous
 
@@ -277,15 +326,14 @@ smtpd_recipient_restrictions = permit_mynetworks, reject_unauth_destination, rej
 #Append username of user who authentication in email headers
 smtpd_sasl_authenticated_header = yes
 
-smtpd_sasl_local_domain=my.domain
+smtpd_sasl_local_domain=$mydomain
 
-#Set mail location
+#Set mail location, a unix mailbox thing I believe
 mail_spool_directory = /home
 
 
 
 ##STARTTLS
-
 smtpd_use_tls = yes
 smtpd_tls_cert_file = /Certs/wildcard.internal.my.domain/fullchain.pem
 smtpd_tls_key_file = /Certs/wildcard.internal.my.domain/privkey.pem
@@ -300,7 +348,7 @@ smtp_tls_security_level = encrypt
 #policyd-spf_time_limit = 3600
 
 
-# To receive mail from SPAM filter:
+# To send and receive mail from SPAM filter:
 milter_protocol = 6
 milter_mail_macros = i {mail_addr} {client_addr} {client_name} {auth_authen}
 milter_default_action = quarantine

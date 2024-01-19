@@ -1,0 +1,136 @@
+# R0NAM1's Lean, mean and clean mail relay config file!
+# https://serverfault.com/questions/536001/how-to-route-mail-in-postifix-based-on-recipient-address
+
+# The banner shown at login, test it with telnet!
+smtpd_banner = Follow the white rabbit... \ $mail_name $mail_version running at $myhostname
+
+# Meant for upgrades, oldest version this config is compatable with.
+#compatibility_level = 3.6
+
+# The actual hostname of the system.
+myhostname=my.hostname
+
+# Wait for full exchange until RCPT_TO to send back info
+smtpd_delay_reject = yes
+# Initial connection helo required
+smtpd_helo_required = yes
+# General restrictions around helo connections, can safely permit all
+smtpd_helo_restrictions = permit_mynetworks, permit
+
+# Aliasing emails, can either be msql or static file, SHOULD BE DONE HERE ON INITIAL RELAY INCASE ALIASING IS NEEDED BETWEEN DOMAINS
+# For instance aliasing postmaster@buisness.domain to postmaster@personal.domain
+virtual_alias_maps = hash:/etc/postfix/virtual_alias_maps
+
+## EXAMPLE FILE
+#postmaster@buisness.domain       postmaster@personal.domain
+## EOF
+
+# The domains I will be forwarding to, what I own
+mydestination = my.domain, my.otherdomain
+# All domains I am allowed to relay. AKA who am I allowed to forward mail to? Part of open relay prevention I think
+relay_domains = $mydestination 
+
+
+# Forward all outgoing smtp to smtp2go, should allow for emails to actually be delivered (Another good option is Mailgun, apparently)
+# Could also be Google, or any other SMTP Relay service
+relayhost = [mail.smtp2go.com]:2525
+
+# Settings For Above (Only do if you need smtp auth on your relay)
+smtp_sasl_auth_enable = yes
+smtp_sasl_security_options =
+smtp_sasl_password_maps = hash:/etc/postfix/smtp2go-sasl-authentication
+## EXAMPLE FILE
+# [mail.smtp2go.com]:2525    username:password
+## EOF
+
+# Email Broke Sometime around 9/13/22 and this fixed it?!?!
+# (I have no local recepients so I cannot map them)
+local_recipient_maps = 
+
+# Based on domain take incoming email and forward it to these servers, the actual domain mail servers:
+# (The from internet to private mail server part, this is the routes)
+transport_maps = hash:/etc/postfix/relay_maps
+## EXAMPLE FILE
+# personal.domain     smtp:[10.0.0.2]:25
+# buisness.domain     smtp:[10.0.0.3]:25
+## EOF
+
+# Which networks am I allowed to communicate with?
+# Since I am a public relay (NOT OPEN RELAY!) I can talk to any network on the internet, and they can talk to me
+mynetworks = 0.0.0.0/0
+
+# VERY Useful for debugging, tells you everything it possibly could.
+#debug_peer_level = 10
+#debug_peer_list = 0.0.0.0/8
+
+# Mail log
+maillog_file=/var/log/postfix.log
+
+# Can be native (nsswitch.conf, or equivalent mechanism), or reach out to DNS, or both.
+smtp_host_lookup = dns
+
+debugger_command =
+         PATH=/bin:/usr/bin:/usr/local/bin:/usr/X11R6/bin
+         ddd $daemon_directory/$process_name $process_id & sleep 5
+
+inet_protocols = ipv4
+
+## MORE CONFIG 
+
+#Enable SASL authentication on submission 587
+smtpd_sasl_auth_enable = yes
+
+#Also advertize "AUTH PLAIN=" along with "AUTH PLAIN " to support broken clients esp outlook
+broken_sasl_auth_clients = yes
+
+#Do not allow anonymous access for SASL.  Very important
+#If SSL or TLS is configured then perhaps noplaintext over
+#non-encryption channel can also be configured
+#smtpd_sasl_security_options = noanonymous
+smtpd_sasl_security_options = noanonymous, noplaintext
+
+#Do not allow anonymous access for SASL over TLS/SSL.  Here
+#plaintext auth should not be a problem
+smtpd_sasl_tls_security_options = noanonymous
+
+#Allow relay for anybody sending to mydomain and allow relay from trusted networks.
+#Further allow relay to any destination from anywhere for authenticated clients
+smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticate, permit
+
+# Specify which clients we can deliver mail to.
+smtpd_recipient_restrictions =  permit_mynetworks, reject_unauth_destination, reject_non_fqdn_sender
+
+smtpd_sender_restrictions = reject_unknown_sender_domain
+#check_policy_service unix:private/policyd-spf is to check for an spf record.
+
+##STARTTLS
+# SMTPD is for private mail connects
+smtpd_use_tls = yes
+smtpd_tls_cert_file = /etc/letsencrypt/live/thisrelay.domain/fullchain.pem
+smtpd_tls_key_file = /etc/letsencrypt/live/thisrelay.domain/privkey.pem
+smtpd_tls_security_level = encrypt
+
+# SMTP TLS configuration for public internet connections
+smtp_use_tls = yes
+smtp_tls_cert_file = /etc/letsencrypt/live/thisrelay.domain/fullchain.pem
+smtp_tls_key_file = /etc/letsencrypt/live/thisrelay.domain/privkey.pem
+smtp_tls_security_level = encrypt
+
+
+# SPF Authentication for incoming mail
+policyd-spf_time_limit = 3600
+
+# Do NOT verify if an email address exists without an actual email
+disable_vrfy_command = yes
+
+## FOR MASTER.CF, TO PREVENT OPEN RELAYS
+## THE SMTP PROGRAM IS WHAT PUBLIC INTERNET MAIL SERVERS CONNECT TO, TO DELIEVER EMAIL
+## This config is REQUIRED to make sure you do not make an open relay that spammers can take advantage of
+# smtpd_sasl_auth_enable disables sasl auth since not every email server needs to login to use port 25
+# mydestination FORCES any emails submitted on port 25 to be what I want, so if scammer.domain is the destination, I reject the email
+# smtpd_recipient_restrictions is normal stuff
+
+# smtp      inet  n       -       y       -       -       smtpd
+#   -o smtpd_sasl_auth_enable=no
+#   -o mydestination=personal.domain,buisness.domain
+#   -o smtpd_recipient_restrictions=permit_sasl_authenticated,reject_unauth_destination

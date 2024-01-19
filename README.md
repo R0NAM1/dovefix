@@ -49,6 +49,6 @@ Time to edit configs, one program at a time to suit your needs
 
 14. Time to run containers through docker-compose up -d!
 
-15. rSpamd will not allow you to log in until you 'docker exec -it rspamd /bin/bash' and run rspamadm pw to generate a hashed password to go into worker-controller.inc
+15. rSpamd will not allow you to log in until you 'docker exec -it rspamd rspamadm pw' to generate a hashed password to go into worker-controller.inc
 
 

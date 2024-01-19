@@ -8,7 +8,7 @@ services:
         - TZ=America/Los_Angles
       volumes:
         # Certificate locations
-        - ./certificates:/certificates
+        - /applications/certificates/:/certificates
         # Where to store the acutal mail files
         - ./mail:/mailDir
         # To make sure DNS, hostname and all that are what we want.
@@ -38,6 +38,10 @@ services:
         # SMTP TLS
         - "465:465"
       restart: unless-stopped
+      # Container will only start after these two start
+      depends_on:
+       - rspamd
+       - dovefix-mariadb
 
     # SPAM Filter Milter, using rspamd
     # rSpamd also deals with dkimKeys instead of dovefix
@@ -58,6 +62,8 @@ services:
       ports:
         # Web interface
         - "11334:11334"
+      depends_on:
+        - redis
 
     # Redis for rSpamd
     redis:
@@ -66,6 +72,23 @@ services:
       networks:
         dovefix-network:
           ipv4_address: 172.28.0.30
+      restart: unless-stopped
+
+    # MariaDB Container for virtual mailbox data
+    # Easiest way to host userdata for postfix and dovecot, even if source of truth is LDAP, can easily make replication script to copy
+    # pertinant data
+    dovefix-mariadb:
+      image: mariadb:11.3.1-rc
+      environment:
+        MYSQL_ROOT_PASSWORD: "rootPass"
+        MYSQL_DATABASE: dovefix
+        MYSQL_USER: dovefix
+        MYSQL_PASSWORD: "userPass"
+      volumes:
+        - ./dovefix-mariadb/data:/var/lib/mysql
+      networks:
+        dovefix-network:
+          ipv4_address: 172.28.0.90
       restart: unless-stopped
 
 # Contain all this into single network
